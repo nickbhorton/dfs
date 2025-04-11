@@ -12,7 +12,7 @@
 
 #include "stringview.h"
 
-Connection pc_accept(int sockfd)
+Connection tcp_accept(int sockfd)
 {
     Connection result = {};
     result.address.address_length = sizeof(result.address.address);

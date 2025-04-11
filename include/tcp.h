@@ -18,6 +18,6 @@ typedef struct {
 
 int tcp_bind(StringView node, int16_t port);
 int tcp_conect(StringView node, int16_t port);
-Connection tcp_accept(int fd);
+Connection tcp_accept(int listen_fd);
 
 #endif

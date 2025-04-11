@@ -1,8 +1,15 @@
 CC=gcc
 CFLAGS=-Wall -Werror -Iinclude -g3
 
-all: md5.o filestuff.o tcp.o
+all: dfs
 
+dfs: dfs.o md5.o tcp.o filestuff.o
+	$(CC) -o $@ $^ $(CFLAGS)
+
+
+dfs.o: src/dfs.c include/macros.h
+	$(CC) $(CFLAGS) -c $< -o $@
+	
 md5.o: src/md5.c include/md5.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
