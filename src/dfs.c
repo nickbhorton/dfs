@@ -54,6 +54,7 @@ int main()
                 shutdown(client_connection.fd, 2);
                 exit(1);
             }
+
             char file_name[128];
             memcpy(file_name, directory, strlen(directory));
             hexify_hash(request.hash, file_name + strlen(directory));
@@ -69,11 +70,11 @@ int main()
                 break;
             }
             case REQUEST_PUT: {
-                int fd = open(file_name, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
+                // int fd = open(file_name, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU); // this version ensures no overwrites
+                int fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
                 if (fd < 0) {
                     printf("put (%zu) failed to open\n", request.file_size);
-                    shutdown(client_connection.fd, 2);
-                    exit(1);
+                    break;
                 }
                 char buffer[4096];
                 bytes_recv = 0;
@@ -94,11 +95,8 @@ int main()
             }
             default:
                 fprintf(stderr, "unknown request function %d\n", request.function);
-                shutdown(client_connection.fd, 2);
-                exit(1);
             }
 
-            // clean up connection
             shutdown(client_connection.fd, 2);
             exit(0);
         } else {
