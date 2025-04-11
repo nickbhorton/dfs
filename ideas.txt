@@ -1,0 +1,7 @@
+Sever: The servers should be simple and scalable
+- sendfile() syscall. If server knows the size of the file it can use sendfile
+  to send and recv file
+- server should not know what it is storing. For example if dfs1 is storing
+  chunks 1 and 2 it should not be aware of this, the client should know the
+  details.
+- server should not know the filename only the hash
