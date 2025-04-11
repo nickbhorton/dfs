@@ -5,3 +5,23 @@ Sever: The servers should be simple and scalable
   chunks 1 and 2 it should not be aware of this, the client should know the
   details.
 - server should not know the filename only the hash
+- server needs to response to 3 things 
+    - get  -> if server has file send it back to client
+        int server_get(int connfd, char file_name[33]) {
+            - get file size
+            - open file_name read only
+            - get shared_lock on fd
+            - sendfile from fd to connfd
+            - unlock fd
+        }
+    - put  -> server saves the file to its dir
+        int server_put(int connfd, char file_name[33], size_t file_size) {
+            - open file_name exclusive create write only
+            - get exclusive lock on fd
+            - sendfile from connfd to fd
+            - unlock fd
+        }
+    - test -> server checks if the file exists
+        int server_test(int connfd, char file_name[33]) {
+            open file_name read only
+        }
