@@ -20,6 +20,7 @@ filestuff.o: src/filestuff.c include/filestuff.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm *.o
+	rm -f *.o
+	rm -f dfs
 
 .PHONY: all clean

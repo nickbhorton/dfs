@@ -6,7 +6,7 @@
 
 #include "stringview.h"
 
-ssize_t get_file_size(StringView file_name);
+ssize_t get_file_size(const char* file_name);
 
 void hash_file_name(StringView file_name, uint8_t hash_o[16]);
 void hexify_hash(uint8_t hash[16], char* hex_o);

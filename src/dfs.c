@@ -14,6 +14,8 @@
 #include "stringview.h"
 #include "tcp.h"
 
+#define OVERWRITE 1
+
 int listen_fd;
 
 void handle_sigint(int signal)
@@ -52,7 +54,7 @@ int main()
             if (bytes_recv < sizeof(DfsRequest)) {
                 fprintf(stderr, "recv did not fully fill out DfsRequest %zd\n", bytes_recv);
                 shutdown(client_connection.fd, 2);
-                exit(1);
+                exit(0);
             }
 
             char file_name[128];
@@ -60,22 +62,52 @@ int main()
             hexify_hash(request.hash, file_name + strlen(directory));
             printf("%s\n", file_name);
 
+            int fd;
+
             switch (request.function) {
             case REQUEST_TEST: {
-                printf("test\n");
+                fd = open(file_name, O_RDONLY, 0);
+                uint8_t file_exist;
+                if (fd >= 0) {
+                    file_exist = 1;
+                    close(fd);
+                } else {
+                    file_exist = 0;
+                }
+                if (send(client_connection.fd, &file_exist, 1, 0) != 1) {
+                    printf("send failed during test\n");
+                }
                 break;
             }
             case REQUEST_GET: {
-                printf("get\n");
+                fd = open(file_name, O_RDONLY, 0);
+                if (fd < 0) {
+                    printf("get failed to open\n");
+                    break;
+                }
+                ssize_t file_size = get_file_size(file_name);
+                if (file_size < 0) {
+                    break;
+                }
+                flock(fd, LOCK_EX);
+                ssize_t bytes_sent = sendfile(client_connection.fd, fd, 0, file_size);
+                flock(fd, LOCK_UN);
+                close(fd);
+                if (bytes_sent != file_size) {
+                    printf("sendfile failed during get (%zi/%zu)\n", bytes_sent, file_size);
+                }
                 break;
             }
             case REQUEST_PUT: {
-                // int fd = open(file_name, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU); // this version ensures no overwrites
-                int fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
+                if (OVERWRITE)
+                    fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
+                else
+                    fd = open(file_name, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
                 if (fd < 0) {
                     printf("put (%zu) failed to open\n", request.file_size);
                     break;
                 }
+                flock(fd, LOCK_EX);
                 char buffer[4096];
                 bytes_recv = 0;
                 while (bytes_recv < request.file_size) {
@@ -90,7 +122,13 @@ int main()
                     }
                     bytes_recv += rv;
                 }
+                flock(fd, LOCK_UN);
                 close(fd);
+
+                // this may create multithreaded issues
+                if (bytes_recv != request.file_size) {
+                    unlink(file_name);
+                }
                 break;
             }
             default:

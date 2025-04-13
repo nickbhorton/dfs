@@ -38,13 +38,10 @@ void hexify_hash(uint8_t hash[16], char* hex_o)
     );
 }
 
-ssize_t get_file_size(StringView file_name)
+ssize_t get_file_size(const char* file_name)
 {
-    memcpy(file_name_buffer, file_name.data, file_name.length);
-    file_name_buffer[file_name.length] = '\0';
-
     static struct stat st;
-    int rv = stat(file_name_buffer, &st);
+    int rv = stat(file_name, &st);
     if (rv < 0) {
         perror("stat");
         return -1;
