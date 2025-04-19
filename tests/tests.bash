@@ -40,6 +40,13 @@ if ! cmp -s .temp tests/test_file2.jpg; then
 fi
 rm .temp
 
+./testcli 5000 tests/test_file2.jpg.dne GET > .temp1
+echo "tests/test_file2.jpg.dne does not exist" > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "test_file2.jpg.dne GET failed"
+fi
+rm .temp1 .temp2
+
 # kill the server
 kill $dfs_pid
 # print the log

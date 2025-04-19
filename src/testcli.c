@@ -86,6 +86,10 @@ int main(int argc, char** argv)
             printf("tcp_recv %d\n", file_size_bytes);
             exit(EXIT_FAILURE);
         }
+        if (!file_size) {
+            printf("%s does not exist\n", argv[2]);
+            exit(EXIT_SUCCESS);
+        }
         char file_buffer[16384];
         ssize_t total_file_bytes_recv = 0;
         while (total_file_bytes_recv < file_size) {

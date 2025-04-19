@@ -73,12 +73,13 @@ int main(int argc, char** argv)
             char file_name[128];
             memcpy(file_name, directory, strlen(directory));
             hexify_hash(request.hash, file_name + strlen(directory));
-            printf("%s\n", file_name);
+            printf("%s ", file_name);
 
             int fd;
 
             switch (request.function) {
             case REQUEST_TEST: {
+                printf("TEST\n");
                 fd = open(file_name, O_RDONLY, 0);
                 char file_exist;
                 if (fd >= 0) {
@@ -88,34 +89,41 @@ int main(int argc, char** argv)
                     file_exist = TEST_RESPONSE_NEXIST;
                 }
                 if (send(client_connection.fd, &file_exist, 1, 0) != 1) {
-                    printf("send failed during test\n");
+                    printf("send failed during TEST\n");
                 }
                 break;
             }
             case REQUEST_GET: {
+                printf("GET\n");
                 fd = open(file_name, O_RDONLY, 0);
-                if (fd < 0) {
-                    printf("get failed to open\n");
-                    break;
+                ssize_t file_size = 0;
+                if (fd >= 0) {
+                    file_size = get_file_size(file_name);
                 }
-                ssize_t file_size = get_file_size(file_name);
                 if (file_size < 0) {
+                    printf("get_file_size failed during GET\n");
                     break;
                 }
+                // send the file_size as bytes
                 ssize_t size_sent = send(client_connection.fd, (char*)&file_size, sizeof(file_size), 0);
                 if (size_sent != sizeof(file_size)) {
-                    printf("send failed during send file_size (%zi/%zu)\n", size_sent, sizeof(file_size));
+                    printf("send failed during send file_size for GET (%zi/%zu)\n", size_sent, sizeof(file_size));
                 }
-                flock(fd, LOCK_EX);
+                // if there is no file dont send file
+                if (!file_size) {
+                    break;
+                }
+                flock(fd, LOCK_SH);
                 ssize_t bytes_sent = sendfile(client_connection.fd, fd, 0, file_size);
                 flock(fd, LOCK_UN);
                 close(fd);
                 if (bytes_sent != file_size) {
-                    printf("sendfile failed during get (%zi/%zu)\n", bytes_sent, file_size);
+                    printf("sendfile failed during GET (%zi/%zu)\n", bytes_sent, file_size);
                 }
                 break;
             }
             case REQUEST_PUT: {
+                printf("PUT\n");
                 if (OVERWRITE)
                     fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
                 else
