@@ -102,6 +102,10 @@ int main(int argc, char** argv)
                 if (file_size < 0) {
                     break;
                 }
+                ssize_t size_sent = send(client_connection.fd, (char*)&file_size, sizeof(file_size), 0);
+                if (size_sent != sizeof(file_size)) {
+                    printf("send failed during send file_size (%zi/%zu)\n", size_sent, sizeof(file_size));
+                }
                 flock(fd, LOCK_EX);
                 ssize_t bytes_sent = sendfile(client_connection.fd, fd, 0, file_size);
                 flock(fd, LOCK_UN);

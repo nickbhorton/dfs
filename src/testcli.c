@@ -74,11 +74,44 @@ int main(int argc, char** argv)
             printf("sendfile %zd/%zd\n", file_bytes_sent, file_size);
             exit(EXIT_FAILURE);
         }
-    } else {
-        printf("not implemented\n");
-        exit(EXIT_FAILURE);
+    } else if (request.function == REQUEST_GET) {
+        int rv = tcp_send(fd, (char*)&request, sizeof(request));
+        if (rv < 0) {
+            printf("tcp_send %d\n", rv);
+            exit(EXIT_FAILURE);
+        }
+        ssize_t file_size = -1;
+        int file_size_bytes = tcp_recv(fd, (char*)&file_size, sizeof(file_size));
+        if (file_size_bytes != sizeof(file_size)) {
+            printf("tcp_recv %d\n", file_size_bytes);
+            exit(EXIT_FAILURE);
+        }
+        char file_buffer[16384];
+        ssize_t total_file_bytes_recv = 0;
+        while (total_file_bytes_recv < file_size) {
+            if (file_size - total_file_bytes_recv < 16384) {
+                ssize_t file_bytes_recv = tcp_recv(fd, file_buffer, file_size - total_file_bytes_recv);
+                if (file_bytes_recv <= 0) {
+                    printf("tcp_recv\n");
+                    exit(EXIT_FAILURE);
+                }
+                total_file_bytes_recv += file_bytes_recv;
+                for (size_t i = 0; i < file_bytes_recv; i++) {
+                    printf("%c", file_buffer[i]);
+                }
+            } else {
+                ssize_t file_bytes_recv = tcp_recv(fd, file_buffer, 16384);
+                if (file_bytes_recv <= 0) {
+                    printf("tcp_recv\n");
+                    exit(EXIT_FAILURE);
+                }
+                total_file_bytes_recv += file_bytes_recv;
+                for (size_t i = 0; i < file_bytes_recv; i++) {
+                    printf("%c", file_buffer[i]);
+                }
+            }
+        }
     }
-
     close(fd);
     return 0;
 }
