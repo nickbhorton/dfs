@@ -1,8 +1,10 @@
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
+#include <sys/poll.h>
 #include <sys/sendfile.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -16,29 +18,40 @@
 
 #define OVERWRITE 1
 
+#define TEST_RESPONSE_EXIST 'y'
+#define TEST_RESPONSE_NEXIST 'n'
+
 int listen_fd;
 
-void handle_sigint(int signal)
-{
-    shutdown(listen_fd, SHUT_RDWR);
-    fflush(stdout);
-    fflush(stderr);
-    exit(0);
-}
+void handle_sigint(int signal);
+void attempt_mkdir(const char* dir_name);
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc != 3) {
+        printf("dfs <directory> <port>\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // port
+    long int port = strtol(argv[2], NULL, 10);
+    if (port < 1024 || port > 65535) {
+        printf("invalid port\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // directory
+    const char* directory = argv[1];
+    attempt_mkdir(directory);
+
+    // handle signals
     Fatal(signal(SIGCHLD, SIG_IGN) == SIG_ERR, "signal");
-
     struct sigaction sa;
     sa.sa_handler = handle_sigint;
     Fatal(sigemptyset(&sa.sa_mask) < 0, "sigemptyset");
     Fatal(sigaction(SIGINT, &sa, NULL) < 0, "sigaction");
 
-    const char* directory = "./dfs1/";
-    const char* server_address = "127.0.0.1";
-    int16_t port = 10001;
-    StringView server_address_sv = {.data = server_address, .length = strlen(server_address)};
+    StringView server_address_sv = {.data = NULL, .length = 0};
     Fatal((listen_fd = tcp_bind(server_address_sv, port)) < 0, "tcp_bind");
     Fatal(listen(listen_fd, 128) < 0, "listen");
 
@@ -50,7 +63,7 @@ int main()
         }
         if (!fork()) {
             DfsRequest request = {};
-            ssize_t bytes_recv = recv(client_connection.fd, (char*)&request, sizeof(DfsRequest), 0);
+            ssize_t bytes_recv = tcp_recv(client_connection.fd, (char*)&request, sizeof(DfsRequest));
             if (bytes_recv < sizeof(DfsRequest)) {
                 fprintf(stderr, "recv did not fully fill out DfsRequest %zd\n", bytes_recv);
                 shutdown(client_connection.fd, 2);
@@ -67,12 +80,12 @@ int main()
             switch (request.function) {
             case REQUEST_TEST: {
                 fd = open(file_name, O_RDONLY, 0);
-                uint8_t file_exist;
+                char file_exist;
                 if (fd >= 0) {
-                    file_exist = 1;
+                    file_exist = TEST_RESPONSE_EXIST;
                     close(fd);
                 } else {
-                    file_exist = 0;
+                    file_exist = TEST_RESPONSE_NEXIST;
                 }
                 if (send(client_connection.fd, &file_exist, 1, 0) != 1) {
                     printf("send failed during test\n");
@@ -140,5 +153,21 @@ int main()
         } else {
             close(client_connection.fd);
         }
+    }
+}
+
+void handle_sigint(int signal)
+{
+    shutdown(listen_fd, SHUT_RDWR);
+    fflush(stdout);
+    fflush(stderr);
+    exit(0);
+}
+
+void attempt_mkdir(const char* dir_name)
+{
+    struct stat st = {};
+    if (stat(dir_name, &st) < 0) {
+        Fatal(mkdir(dir_name, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0, "mkdir");
     }
 }

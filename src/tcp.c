@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,70 @@
 #include <sys/types.h>
 
 #include "stringview.h"
+
+ssize_t tcp_recv(int fd, char* buffer, size_t size)
+{
+    struct pollfd pfds[1];
+    int rv = 0;
+    pfds[0].fd = fd;
+    pfds[0].events = POLLIN;
+
+    size_t total_bytes_recv = 0;
+
+    for (int i = 0; i < TCP_MAX_CALLS; i++) {
+        rv = poll(pfds, 1, TCP_MAX_TIME_MS / TCP_MAX_CALLS);
+        if (rv <= 0) {
+            continue;
+        }
+        if (pfds[0].revents & POLLIN) {
+            ssize_t bytes_recv = recv(fd, buffer, size, 0);
+            if (bytes_recv < 0) {
+                perror("recv");
+            } else {
+                total_bytes_recv += bytes_recv;
+            }
+        }
+        if (total_bytes_recv == size) {
+            return total_bytes_recv;
+        }
+        if (pfds[0].revents & POLLHUP) {
+            return -1;
+        }
+    }
+    return -2;
+}
+
+ssize_t tcp_send(int fd, const char* buffer, size_t size)
+{
+    struct pollfd pfds[1];
+    int rv = 0;
+    pfds[0].fd = fd;
+    pfds[0].events = POLLOUT;
+
+    size_t total_bytes_sent = 0;
+
+    for (int i = 0; i < TCP_MAX_CALLS; i++) {
+        rv = poll(pfds, 1, 100);
+        if (rv <= 0) {
+            continue;
+        }
+        if (pfds[0].revents & POLLOUT) {
+            ssize_t bytes_sent = send(fd, buffer, size, 0);
+            if (bytes_sent <= 0) {
+                perror("send");
+            } else {
+                total_bytes_sent += bytes_sent;
+            }
+        }
+        if (total_bytes_sent == size) {
+            return total_bytes_sent;
+        }
+        if (pfds[0].revents & POLLHUP) {
+            return -1;
+        }
+    }
+    return -2;
+}
 
 Connection tcp_accept(int sockfd)
 {
@@ -97,4 +162,4 @@ static int tcp_generic(StringView node, int16_t port, bool bind_node)
 }
 
 int tcp_bind(StringView node, int16_t port) { return tcp_generic(node, port, true); }
-int tcp_conect(StringView node, int16_t port) { return tcp_generic(node, port, false); }
+int tcp_connect(StringView node, int16_t port) { return tcp_generic(node, port, false); }
