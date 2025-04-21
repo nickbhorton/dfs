@@ -62,7 +62,9 @@ rm -f .temp .temp1 .temp2
 # kill the server
 kill $dfs_pid
 # print the log
-echo "dfs log:"
-cat .dfs_log.txt
+if [ -s ".dfs_log.txt" ]; then
+    echo "dfs log:"
+    cat .dfs_log.txt
+fi
 rm .dfs_log.txt
 rm -rf ./.test_dfs1/
