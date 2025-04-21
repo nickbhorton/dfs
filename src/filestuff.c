@@ -13,7 +13,7 @@ void hash_file_name(StringView file_name, uint8_t hash[16])
     md5String(file_name_buffer, hash);
 }
 
-void hexify_hash(uint8_t hash[16], char* hex_o)
+void hexify_hash(uint8_t const hash[16], char* hex_o)
 {
     snprintf(
         hex_o,

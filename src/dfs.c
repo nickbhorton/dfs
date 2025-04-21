@@ -28,6 +28,7 @@ int listen_fd;
 
 void handle_sigint(int signal);
 void attempt_mkdir(const char* dir_name);
+void filename_from_request(DfsRequest const* request, const char* dir, char* file_name_o, size_t size);
 
 int main(int argc, char** argv)
 {
@@ -54,16 +55,13 @@ int main(int argc, char** argv)
     Fatal(sigemptyset(&sa.sa_mask) < 0, "sigemptyset");
     Fatal(sigaction(SIGINT, &sa, NULL) < 0, "sigaction");
 
+    // bind server address
     StringView server_address_sv = {.data = NULL, .length = 0};
     Fatal((listen_fd = tcp_bind(server_address_sv, port)) < 0, "tcp_bind");
     Fatal(listen(listen_fd, 128) < 0, "listen");
 
     while (1) {
         Connection client_connection = tcp_accept(listen_fd);
-        if (client_connection.fd < 0) {
-            printf("connection failed\n");
-            continue;
-        }
         if (!fork()) {
             DfsRequest request = {};
             ssize_t bytes_recv = recv_request(client_connection.fd, &request);
@@ -73,19 +71,13 @@ int main(int argc, char** argv)
                 exit(0);
             }
 
-            char fn_real[128];
-            char fn_hex[33];
-            hexify_hash(request.hash, fn_hex);
-
-            // removes any path given defensivly
-            char* no_path_ptr = strrchr(request.file_name.data, '/');
-            no_path_ptr
-                ? snprintf(fn_real, 128, "%s/%s%s%.*s", dir, fn_hex, SEP, (int)strlen(no_path_ptr) - 1, no_path_ptr + 1)
-                : snprintf(fn_real, 128, "%s/%s%s%s", dir, fn_hex, SEP, request.file_name.data);
+            // make filename from request
+            char file_name[256];
+            filename_from_request(&request, dir, file_name, sizeof(file_name));
 
             switch (request.function) {
             case REQUEST_TEST: {
-                int fd = open(fn_real, O_RDONLY, 0);
+                int fd = open(file_name, O_RDONLY, 0);
                 char file_exist;
                 if (fd >= 0) {
                     file_exist = TEST_RESPONSE_EXIST;
@@ -99,10 +91,10 @@ int main(int argc, char** argv)
                 break;
             }
             case REQUEST_GET: {
-                int fd = open(fn_real, O_RDONLY, 0);
+                int fd = open(file_name, O_RDONLY, 0);
                 ssize_t file_size = 0;
                 if (fd >= 0) {
-                    file_size = get_file_size(fn_real);
+                    file_size = get_file_size(file_name);
                 }
                 if (file_size < 0) {
                     printf("get_file_size failed during GET\n");
@@ -129,9 +121,9 @@ int main(int argc, char** argv)
             case REQUEST_PUT: {
                 int fd;
                 if (OVERWRITE)
-                    fd = open(fn_real, O_CREAT | O_WRONLY, S_IRWXU);
+                    fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
                 else
-                    fd = open(fn_real, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
+                    fd = open(file_name, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
                 if (fd < 0) {
                     printf("put (%zu) failed to open\n", request.file_size);
                     break;
@@ -156,7 +148,7 @@ int main(int argc, char** argv)
 
                 // this may create multithreaded issues
                 if (bytes_recv != request.file_size) {
-                    unlink(fn_real);
+                    unlink(file_name);
                 }
                 break;
             }
@@ -216,4 +208,16 @@ void attempt_mkdir(const char* dir_name)
     if (stat(dir_name, &st) < 0) {
         Fatal(mkdir(dir_name, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0, "mkdir");
     }
+}
+
+void filename_from_request(DfsRequest const* request, const char* dir, char* file_name_o, size_t size)
+{
+    char fn_hex[33];
+    hexify_hash(request->hash, fn_hex);
+
+    // removes any path given defensivly
+    char* no_path_ptr = strrchr(request->file_name.data, '/');
+    no_path_ptr
+        ? snprintf(file_name_o, size, "%s/%s%s%.*s", dir, fn_hex, SEP, (int)strlen(no_path_ptr) - 1, no_path_ptr + 1)
+        : snprintf(file_name_o, size, "%s/%s%s%s", dir, fn_hex, SEP, request->file_name.data);
 }
