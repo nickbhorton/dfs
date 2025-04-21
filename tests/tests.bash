@@ -47,10 +47,16 @@ if ! cmp -s .temp1 .temp2; then
 fi
 rm .temp1 .temp2
 
+./testcli 5000 na LS
+sleep 1
+
 # kill the server
 kill $dfs_pid
 # print the log
 echo "dfs log:"
 cat .dfs_log.txt
 rm .dfs_log.txt
+echo
+echo "test directory content:"
+ls ./.test_dfs1/
 rm -rf ./.test_dfs1/

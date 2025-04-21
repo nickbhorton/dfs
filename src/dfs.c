@@ -69,11 +69,24 @@ int main(int argc, char** argv)
                 shutdown(client_connection.fd, 2);
                 exit(0);
             }
+            printf("REQ %d\n", request.function);
+            fflush(stdout);
 
             char file_name[128];
-            memcpy(file_name, directory, strlen(directory));
-            hexify_hash(request.hash, file_name + strlen(directory));
-            printf("%s ", file_name);
+            char* fn_ptr = file_name;
+            memcpy(fn_ptr, directory, strlen(directory));
+            fn_ptr += strlen(directory);
+            hexify_hash(request.hash, fn_ptr);
+            fn_ptr += 32;
+
+            // puts the filename after a "___" removes any path given defensivly
+            memcpy(fn_ptr, "___", 3);
+            fn_ptr += 3;
+
+            // removes any path given defensivly
+            char* no_path_ptr = strrchr(request.file_name.data, '/');
+            no_path_ptr ? memcpy(fn_ptr, no_path_ptr + 1, strlen(no_path_ptr) - 1)
+                        : memcpy(fn_ptr, request.file_name.data, strlen(request.file_name.data));
 
             int fd;
 
@@ -154,6 +167,28 @@ int main(int argc, char** argv)
                 if (bytes_recv != request.file_size) {
                     unlink(file_name);
                 }
+                break;
+            }
+            case REQUEST_LS: {
+                printf("LS\n");
+
+                char popen_data[4096] = {};
+                /* Open the command for reading. */
+                FILE* fp = popen("/bin/ls", "r");
+                if (fp == NULL) {
+                    printf("Failed to run command\n");
+                    exit(1);
+                }
+
+                /* Read the output a line at a time - output it. */
+                printf("here\n");
+                fflush(stdout);
+                while (fgets(popen_data, sizeof(popen_data), fp) != NULL) {
+                    printf("%s", popen_data);
+                }
+
+                /* close */
+                pclose(fp);
                 break;
             }
             default:

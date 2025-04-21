@@ -28,6 +28,8 @@ int main(int argc, char** argv)
         request.function = REQUEST_PUT;
     } else if (strncmp(argv[3], "TEST", 4) == 0) {
         request.function = REQUEST_TEST;
+    } else if (strncmp(argv[3], "LS", 2) == 0) {
+        request.function = REQUEST_LS;
     } else {
         printf("invalid function, [GET|PUT|TEST]\n");
         exit(EXIT_FAILURE);
@@ -115,6 +117,12 @@ int main(int argc, char** argv)
                     printf("%c", file_buffer[i]);
                 }
             }
+        }
+    } else if (request.function == REQUEST_LS) {
+        ssize_t rv = send_request(fd, &request);
+        if (rv < 0) {
+            printf("send_request %zd\n", rv);
+            exit(EXIT_FAILURE);
         }
     }
     close(fd);

@@ -10,6 +10,7 @@
 #define REQUEST_TEST 1
 #define REQUEST_GET 2
 #define REQUEST_PUT 3
+#define REQUEST_LS 4
 
 // packed because struct will be read into over tcp connection
 typedef struct __attribute__((packed)) {

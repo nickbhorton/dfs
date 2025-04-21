@@ -33,7 +33,7 @@ ssize_t recv_request(int sock_fd, DfsRequest* request_o)
     file_name_buffer[request_o->file_name.length] = '\0';
     request_o->file_name.data = file_name_buffer;
 
-    printf("file_name recv: %.*s\n", (int)request_o->file_name.length, file_name_buffer);
+    // printf("file_name recv: %s\n", request_o->file_name.data);
     return total_bytes_recv;
 }
 
@@ -50,7 +50,6 @@ ssize_t send_request(int sock_fd, DfsRequest const* request)
     // file_name length
     bytes_sent = tcp_send(sock_fd, (char const*)&(request->file_name.length), sizeof(request->file_name.length));
     if (bytes_sent != sizeof(request->file_name.length)) {
-        printf("%zd\n", bytes_sent);
         return -2;
     }
     total_bytes_sent += bytes_sent;
