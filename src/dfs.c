@@ -22,6 +22,8 @@
 #define TEST_RESPONSE_EXIST 'y'
 #define TEST_RESPONSE_NEXIST 'n'
 
+#define SEP "___"
+
 int listen_fd;
 
 void handle_sigint(int signal);
@@ -42,8 +44,8 @@ int main(int argc, char** argv)
     }
 
     // directory
-    const char* directory = argv[1];
-    attempt_mkdir(directory);
+    const char* dir = argv[1];
+    attempt_mkdir(dir);
 
     // handle signals
     Fatal(signal(SIGCHLD, SIG_IGN) == SIG_ERR, "signal");
@@ -70,27 +72,20 @@ int main(int argc, char** argv)
                 shutdown(client_connection.fd, 2);
                 exit(0);
             }
-            char file_name[128];
-            char* fn_ptr = file_name;
-            memcpy(fn_ptr, directory, strlen(directory));
-            fn_ptr += strlen(directory);
-            hexify_hash(request.hash, fn_ptr);
-            fn_ptr += 32;
 
-            // puts the filename after a "___" removes any path given defensivly
-            memcpy(fn_ptr, "___", 3);
-            fn_ptr += 3;
+            char fn_real[128];
+            char fn_hex[33];
+            hexify_hash(request.hash, fn_hex);
 
             // removes any path given defensivly
             char* no_path_ptr = strrchr(request.file_name.data, '/');
-            no_path_ptr ? memcpy(fn_ptr, no_path_ptr + 1, strlen(no_path_ptr) - 1)
-                        : memcpy(fn_ptr, request.file_name.data, strlen(request.file_name.data));
-
-            int fd;
+            no_path_ptr
+                ? snprintf(fn_real, 128, "%s/%s%s%.*s", dir, fn_hex, SEP, (int)strlen(no_path_ptr) - 1, no_path_ptr + 1)
+                : snprintf(fn_real, 128, "%s/%s%s%s", dir, fn_hex, SEP, request.file_name.data);
 
             switch (request.function) {
             case REQUEST_TEST: {
-                fd = open(file_name, O_RDONLY, 0);
+                int fd = open(fn_real, O_RDONLY, 0);
                 char file_exist;
                 if (fd >= 0) {
                     file_exist = TEST_RESPONSE_EXIST;
@@ -104,10 +99,10 @@ int main(int argc, char** argv)
                 break;
             }
             case REQUEST_GET: {
-                fd = open(file_name, O_RDONLY, 0);
+                int fd = open(fn_real, O_RDONLY, 0);
                 ssize_t file_size = 0;
                 if (fd >= 0) {
-                    file_size = get_file_size(file_name);
+                    file_size = get_file_size(fn_real);
                 }
                 if (file_size < 0) {
                     printf("get_file_size failed during GET\n");
@@ -132,10 +127,11 @@ int main(int argc, char** argv)
                 break;
             }
             case REQUEST_PUT: {
+                int fd;
                 if (OVERWRITE)
-                    fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
+                    fd = open(fn_real, O_CREAT | O_WRONLY, S_IRWXU);
                 else
-                    fd = open(file_name, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
+                    fd = open(fn_real, O_CREAT | O_EXCL | O_WRONLY, S_IRWXU);
                 if (fd < 0) {
                     printf("put (%zu) failed to open\n", request.file_size);
                     break;
@@ -160,13 +156,13 @@ int main(int argc, char** argv)
 
                 // this may create multithreaded issues
                 if (bytes_recv != request.file_size) {
-                    unlink(file_name);
+                    unlink(fn_real);
                 }
                 break;
             }
             case REQUEST_LS: {
                 char ls_resp[LS_BUFFER_SIZE];
-                int bytes_written = snprintf(ls_resp, sizeof(ls_resp), "/bin/ls %s", directory);
+                int bytes_written = snprintf(ls_resp, sizeof(ls_resp), "/bin/ls %s", dir);
                 FILE* fp = popen(ls_resp, "r");
                 memset(ls_resp, 0, bytes_written);
                 if (fp == NULL) {

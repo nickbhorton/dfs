@@ -1,11 +1,11 @@
 #!/bin/bash
+# script operates on silence is success
 
 # setup
-./dfs ./.test_dfs1/ 5000 1> .dfs_log.txt &
+./dfs ./.test_dfs1 5000 1> .dfs_log.txt &
 dfs_pid=$!
 
 # tests
-#
 ./testcli 5000 na LS > .temp
 if [ -s ".temp" ]; then
     echo "list on empty failed"
@@ -67,4 +67,4 @@ if [ -s ".dfs_log.txt" ]; then
     cat .dfs_log.txt
 fi
 rm .dfs_log.txt
-rm -rf ./.test_dfs1/
+rm -rf ./.test_dfs1
