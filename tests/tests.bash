@@ -5,6 +5,11 @@
 dfs_pid=$!
 
 # tests
+#
+./testcli 5000 na LS > .temp
+if [ -s ".temp" ]; then
+    echo "list on empty failed"
+fi
  
 rv=$(./testcli 5000 tests/test_file1.txt TEST)
 if [ "$rv" != "n" ]; then
@@ -45,10 +50,14 @@ echo "tests/test_file2.jpg.dne does not exist" > .temp2
 if ! cmp -s .temp1 .temp2; then
     echo "test_file2.jpg.dne GET failed"
 fi
-rm .temp1 .temp2
 
-./testcli 5000 na LS
-sleep 1
+./testcli 5000 na LS > .temp1
+ls .test_dfs1 > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "basic LS failed"
+fi
+
+rm -f .temp .temp1 .temp2
 
 # kill the server
 kill $dfs_pid
@@ -56,7 +65,4 @@ kill $dfs_pid
 echo "dfs log:"
 cat .dfs_log.txt
 rm .dfs_log.txt
-echo
-echo "test directory content:"
-ls ./.test_dfs1/
 rm -rf ./.test_dfs1/

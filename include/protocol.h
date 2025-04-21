@@ -12,6 +12,8 @@
 #define REQUEST_PUT 3
 #define REQUEST_LS 4
 
+#define LS_BUFFER_SIZE 4096
+
 // packed because struct will be read into over tcp connection
 typedef struct __attribute__((packed)) {
     uint8_t function;

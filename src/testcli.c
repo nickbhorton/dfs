@@ -124,6 +124,21 @@ int main(int argc, char** argv)
             printf("send_request %zd\n", rv);
             exit(EXIT_FAILURE);
         }
+        ssize_t response_size = -1;
+        int response_size_bytes = tcp_recv(fd, (char*)&response_size, sizeof(response_size));
+        if (response_size_bytes != sizeof(response_size)) {
+            printf("tcp_recv %d\n", response_size_bytes);
+            exit(EXIT_FAILURE);
+        }
+        if (response_size > 0) {
+            char response[LS_BUFFER_SIZE];
+            response_size_bytes = tcp_recv(fd, response, response_size);
+            if (response_size_bytes != response_size) {
+                printf("tcp_recv %d\n", response_size_bytes);
+                exit(EXIT_FAILURE);
+            }
+            printf("%.*s", (int)response_size_bytes, response);
+        }
     }
     close(fd);
     return 0;

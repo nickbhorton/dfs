@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -69,9 +70,6 @@ int main(int argc, char** argv)
                 shutdown(client_connection.fd, 2);
                 exit(0);
             }
-            printf("REQ %d\n", request.function);
-            fflush(stdout);
-
             char file_name[128];
             char* fn_ptr = file_name;
             memcpy(fn_ptr, directory, strlen(directory));
@@ -92,7 +90,6 @@ int main(int argc, char** argv)
 
             switch (request.function) {
             case REQUEST_TEST: {
-                printf("TEST\n");
                 fd = open(file_name, O_RDONLY, 0);
                 char file_exist;
                 if (fd >= 0) {
@@ -107,7 +104,6 @@ int main(int argc, char** argv)
                 break;
             }
             case REQUEST_GET: {
-                printf("GET\n");
                 fd = open(file_name, O_RDONLY, 0);
                 ssize_t file_size = 0;
                 if (fd >= 0) {
@@ -136,7 +132,6 @@ int main(int argc, char** argv)
                 break;
             }
             case REQUEST_PUT: {
-                printf("PUT\n");
                 if (OVERWRITE)
                     fd = open(file_name, O_CREAT | O_WRONLY, S_IRWXU);
                 else
@@ -170,25 +165,33 @@ int main(int argc, char** argv)
                 break;
             }
             case REQUEST_LS: {
-                printf("LS\n");
-
-                char popen_data[4096] = {};
-                /* Open the command for reading. */
-                FILE* fp = popen("/bin/ls", "r");
+                char ls_resp[LS_BUFFER_SIZE];
+                int bytes_written = snprintf(ls_resp, sizeof(ls_resp), "/bin/ls %s", directory);
+                FILE* fp = popen(ls_resp, "r");
+                memset(ls_resp, 0, bytes_written);
                 if (fp == NULL) {
                     printf("Failed to run command\n");
                     exit(1);
                 }
+                size_t i = 0;
+                while ((ls_resp[i] = fgetc(fp)) != EOF) {
+                    i++;
+                }
+                pclose(fp);
 
-                /* Read the output a line at a time - output it. */
-                printf("here\n");
-                fflush(stdout);
-                while (fgets(popen_data, sizeof(popen_data), fp) != NULL) {
-                    printf("%s", popen_data);
+                // send the size as bytes
+                ssize_t size_sent = tcp_send(client_connection.fd, (char*)&i, sizeof(i));
+                if (size_sent != sizeof(i)) {
+                    printf("send failed during send size for LS (%zi/%zu)\n", size_sent, sizeof(i));
                 }
 
-                /* close */
-                pclose(fp);
+                // if there is a list, send the list
+                if (i > 0) {
+                    size_sent = tcp_send(client_connection.fd, ls_resp, i);
+                    if (size_sent != i) {
+                        printf("send failed during send file list for LS (%zi/%zu)\n", size_sent, i);
+                    }
+                }
                 break;
             }
             default:
