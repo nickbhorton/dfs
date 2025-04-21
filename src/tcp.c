@@ -23,7 +23,7 @@ ssize_t tcp_recv(int fd, char* buffer, size_t size)
     size_t total_bytes_recv = 0;
 
     for (int i = 0; i < TCP_MAX_CALLS; i++) {
-        rv = poll(pfds, 1, TCP_MAX_TIME_MS / TCP_MAX_CALLS);
+        rv = poll(pfds, 1, 100);
         if (rv <= 0) {
             continue;
         }

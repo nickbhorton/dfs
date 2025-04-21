@@ -3,10 +3,10 @@ CFLAGS=-Wall -Werror -Iinclude -g3
 
 all: dfs testcli
 
-dfs: dfs.o md5.o tcp.o filestuff.o
+dfs: dfs.o md5.o tcp.o filestuff.o protocol.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
-testcli: testcli.o md5.o tcp.o filestuff.o
+testcli: testcli.o md5.o tcp.o filestuff.o protocol.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
 
@@ -23,6 +23,9 @@ tcp.o: src/tcp.c include/tcp.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 filestuff.o: src/filestuff.c include/filestuff.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+protocol.o: src/protocol.c include/protocol.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

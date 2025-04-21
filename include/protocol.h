@@ -3,6 +3,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
+
+#include "stringview.h"
 
 #define REQUEST_TEST 1
 #define REQUEST_GET 2
@@ -13,6 +16,16 @@ typedef struct __attribute__((packed)) {
     uint8_t function;
     uint8_t hash[16];
     size_t file_size;
+} DfsRequestHeader;
+
+typedef struct __attribute__((packed)) {
+    uint8_t function;
+    uint8_t hash[16];
+    size_t file_size;
+    StringView file_name;
 } DfsRequest;
+
+ssize_t recv_request(int sock_fd, DfsRequest* request_o);
+ssize_t send_request(int sock_fd, DfsRequest const* request);
 
 #endif

@@ -35,6 +35,7 @@ int main(int argc, char** argv)
 
     StringView file_name_sv = {.data = argv[2], .length = strlen(argv[2])};
     hash_file_name(file_name_sv, request.hash);
+    request.file_name = file_name_sv;
 
     StringView node = {.data = NULL, .length = 0};
     int fd = tcp_connect(node, port);
@@ -44,9 +45,9 @@ int main(int argc, char** argv)
     }
 
     if (request.function == REQUEST_TEST) {
-        int rv = tcp_send(fd, (char*)&request, sizeof(request));
+        ssize_t rv = send_request(fd, &request);
         if (rv < 0) {
-            printf("tcp_send %d\n", rv);
+            printf("send_request%zd\n", rv);
             exit(EXIT_FAILURE);
         }
         char ans;
@@ -64,9 +65,9 @@ int main(int argc, char** argv)
             exit(EXIT_FAILURE);
         }
         request.file_size = file_size;
-        int rv = tcp_send(fd, (char*)&request, sizeof(request));
+        ssize_t rv = send_request(fd, &request);
         if (rv < 0) {
-            printf("tcp_send %d\n", rv);
+            printf("send_request %zd\n", rv);
             exit(EXIT_FAILURE);
         }
         ssize_t file_bytes_sent = sendfile(fd, fileno(fptr), 0, file_size);
@@ -75,9 +76,9 @@ int main(int argc, char** argv)
             exit(EXIT_FAILURE);
         }
     } else if (request.function == REQUEST_GET) {
-        int rv = tcp_send(fd, (char*)&request, sizeof(request));
+        ssize_t rv = send_request(fd, &request);
         if (rv < 0) {
-            printf("tcp_send %d\n", rv);
+            printf("send_request %zd\n", rv);
             exit(EXIT_FAILURE);
         }
         ssize_t file_size = -1;

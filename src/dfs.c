@@ -63,9 +63,9 @@ int main(int argc, char** argv)
         }
         if (!fork()) {
             DfsRequest request = {};
-            ssize_t bytes_recv = tcp_recv(client_connection.fd, (char*)&request, sizeof(DfsRequest));
-            if (bytes_recv < sizeof(DfsRequest)) {
-                fprintf(stderr, "recv did not fully fill out DfsRequest %zd\n", bytes_recv);
+            ssize_t bytes_recv = recv_request(client_connection.fd, &request);
+            if (bytes_recv < 0) {
+                fprintf(stderr, "recv_request failed %zd\n", bytes_recv);
                 shutdown(client_connection.fd, 2);
                 exit(0);
             }
