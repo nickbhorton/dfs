@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>

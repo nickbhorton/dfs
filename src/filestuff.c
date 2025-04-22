@@ -1,6 +1,5 @@
 #include "filestuff.h"
 
-#include <string.h>
 #include <sys/stat.h>
 
 #include "md5.h"

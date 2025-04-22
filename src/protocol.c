@@ -1,6 +1,5 @@
 #include "protocol.h"
 #include "tcp.h"
-#include <stdio.h>
 
 #define FILE_NAME_BUFFER_SIZE 256
 

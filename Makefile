@@ -1,9 +1,12 @@
 CC=gcc
 CFLAGS=-Wall -Werror -Iinclude -g3
 
-all: dfs testcli
+all: dfs dfc testcli
 
 dfs: dfs.o md5.o tcp.o filestuff.o protocol.o
+	$(CC) -o $@ $^ $(CFLAGS)
+
+dfc: dfc.o md5.o tcp.o filestuff.o protocol.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
 testcli: testcli.o md5.o tcp.o filestuff.o protocol.o
@@ -11,6 +14,9 @@ testcli: testcli.o md5.o tcp.o filestuff.o protocol.o
 
 
 dfs.o: src/dfs.c include/macros.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+dfc.o: src/dfc.c include/macros.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 testcli.o: src/testcli.c include/macros.h
@@ -30,7 +36,8 @@ protocol.o: src/protocol.c include/protocol.h
 
 clean:
 	rm -f *.o
-	rm -f dfs testcli
+	rm -f dfs dfc testcli
 	rm -rf dfs1
+	rm -rf .dir1 .dir2 .dir3 .dir4
 
 .PHONY: all clean
