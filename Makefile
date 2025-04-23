@@ -1,13 +1,13 @@
 CC=gcc
 CFLAGS=-Wall -Werror -Iinclude -g3
 
-all: dfs dfc testcli
+all: dfs dfc testcli dirs
 
 dfs: dfs.o md5.o tcp.o filestuff.o protocol.o
 	$(CC) -o $@ $^ $(CFLAGS)
 
 dfc: dfc.o md5.o tcp.o filestuff.o protocol.o
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -o $@ $^ $(CFLAGS) -fsanitize=leak -llsan
 
 testcli: testcli.o md5.o tcp.o filestuff.o protocol.o
 	$(CC) -o $@ $^ $(CFLAGS)
@@ -34,6 +34,9 @@ filestuff.o: src/filestuff.c include/filestuff.h
 protocol.o: src/protocol.c include/protocol.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
+dirs:
+	mkdir -p dfs1 dfs2 dfs3 dfs4
+
 clean:
 	rm -f *.o
 	rm -f dfs dfc testcli
@@ -41,4 +44,4 @@ clean:
 	rm -rf .dir1 .dir2 .dir3 .dir4
 	rm -rf dfs1 dfs2 dfs3 dfs4
 
-.PHONY: all clean
+.PHONY: all clean dirs
