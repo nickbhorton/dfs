@@ -21,8 +21,6 @@
 #define TEST_RESPONSE_EXIST 'y'
 #define TEST_RESPONSE_NEXIST 'n'
 
-#define SEP "___"
-
 int listen_fd;
 
 void handle_sigint(int signal);

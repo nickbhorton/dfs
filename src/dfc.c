@@ -3,7 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
+#include <time.h>
 
+#include "filestuff.h"
 #include "protocol.h"
 #include "stringview.h"
 #include "tcp.h"
@@ -14,26 +17,67 @@ int validate_input(int argc, char** argv);
 // returns number of heap sock_fd connections in connections_o
 int read_conf(int** connections_o);
 
+void dfc_put(int scc, int* scv, int bfnc, char** bfnv);
+
 int main(int argc, char** argv)
 {
-    [[maybe_unused]] DfsRequest request = {};
-    request.function = validate_input(argc, argv);
+    int function = validate_input(argc, argv);
     int* connections = NULL;
     int connection_count = 0;
     if ((connection_count = read_conf(&connections)) <= 0) {
         printf("read_conf\n");
         exit(1);
     }
+    switch (function) {
+    case REQUEST_PUT:
+        dfc_put(connection_count, connections, argc - 2, &argv[2]);
+    default:
+        break;
+    }
 
     // shutdown all connections
     // shudown_connections:
     for (int i = 0; i < connection_count; i++) {
-        printf("%d\n", connections[i]);
+        i < connection_count - 1 ? printf("%d/", connections[i]) : printf("%d", connections[i]);
         if (connections[i] > 0) {
             shutdown(connections[i], SHUT_RDWR);
         }
     }
+    printf("\n");
     free(connections);
+}
+
+int bfn_to_fn(const char* bfn, char* fn_o, size_t fnsz, int chunk_num, int chunk_count)
+{
+    struct timespec current_time;
+    clock_gettime(CLOCK_REALTIME, &current_time);
+
+    char const* path_removed = strrchr(bfn, '/');
+    char const* fn_no_path = path_removed ? path_removed + 1 : bfn;
+    int rv = snprintf(
+        fn_o,
+        fnsz,
+        "%s.%ld.%09ld.%d.%d",
+        fn_no_path,
+        current_time.tv_sec,
+        current_time.tv_nsec,
+        chunk_num,
+        chunk_count
+    );
+    return rv;
+}
+
+// bfn -> base file name
+// sc  -> socket connection
+void dfc_put(int scc, int* scv, int bfnc, char** bfnv)
+{
+    for (int i = 0; i < bfnc; i++) {
+        char fn[256];
+        int rv = bfn_to_fn(bfnv[i], fn, 256, 1, 4);
+        if (rv > 0) {
+            printf("%s (%lu)\n", fn, strlen(fn));
+        }
+    }
 }
 
 int read_conf(int** connections_o)
