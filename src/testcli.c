@@ -35,9 +35,26 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    StringView file_name_sv = {.data = argv[2], .length = strlen(argv[2])};
-    hash_file_name(file_name_sv, request.hash);
-    request.file_name = file_name_sv;
+    char* last_path_ptr = strrchr(argv[2], '/');
+    char* file_name_no_path = last_path_ptr ? last_path_ptr + 1 : argv[2];
+
+    StringView file_name_sv = {.data = file_name_no_path, .length = strlen(argv[2])};
+
+    uint8_t file_name_hash[16];
+    hash_file_name(file_name_sv, file_name_hash);
+
+    char file_name_hash_str[33];
+    hexify_hash(file_name_hash, file_name_hash_str);
+
+    char full_file_name[256];
+    int ffn_size = snprintf(full_file_name, 256, "%s.%s", file_name_no_path, file_name_hash_str);
+    if (ffn_size < 0) {
+        printf("snprintf crit fail\n");
+        exit(EXIT_FAILURE);
+    }
+
+    request.file_name.data = full_file_name;
+    request.file_name.length = ffn_size;
 
     StringView node = {.data = NULL, .length = 0};
     int fd = tcp_connect(node, port);

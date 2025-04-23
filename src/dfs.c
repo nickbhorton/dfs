@@ -211,12 +211,5 @@ void attempt_mkdir(const char* dir_name)
 
 void filename_from_request(DfsRequest const* request, const char* dir, char* file_name_o, size_t size)
 {
-    char fn_hex[33];
-    hexify_hash(request->hash, fn_hex);
-
-    // removes any path given defensivly
-    char* no_path_ptr = strrchr(request->file_name.data, '/');
-    no_path_ptr
-        ? snprintf(file_name_o, size, "%s/%s%s%.*s", dir, fn_hex, SEP, (int)strlen(no_path_ptr) - 1, no_path_ptr + 1)
-        : snprintf(file_name_o, size, "%s/%s%s%s", dir, fn_hex, SEP, request->file_name.data);
+    snprintf(file_name_o, size, "%s/%.*s", dir, (int)request->file_name.length, request->file_name.data);
 }

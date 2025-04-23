@@ -17,13 +17,11 @@
 // packed because struct will be read into over tcp connection
 typedef struct __attribute__((packed)) {
     uint8_t function;
-    uint8_t hash[16];
     size_t file_size;
 } DfsRequestHeader;
 
 typedef struct __attribute__((packed)) {
     uint8_t function;
-    uint8_t hash[16];
     size_t file_size;
     StringView file_name;
 } DfsRequest;
