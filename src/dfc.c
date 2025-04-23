@@ -143,6 +143,7 @@ void dfc_put(int scc, int* scv, int bfnc, char** bfnv)
         StringView bfn_sv = {.data = bfnv[i], .length = strlen(bfnv[i])};
         hash_file_name(bfn_sv, bfn_hash);
         int x = bfn_hash[15] % scc;
+        printf("x = %d\n", x);
 
         int rv;
         for (int n = 0; n < scc; n++) {
@@ -197,12 +198,13 @@ int get_chunk_info(
             base_file_name_idx += 1;
         }
     }
+    base_file_name_o[base_file_name_idx] = '\0';
     return 0;
 }
-int chunk_sort(void const* a, void const* b)
+int file_name_sort(void const* a, void const* b)
 {
-    char const* str1 = *(char const**)a;
-    char const* str2 = *(char const**)b;
+    char const* fn1 = *(char const**)a;
+    char const* fn2 = *(char const**)b;
     struct timespec put_time1;
     struct timespec put_time2;
     int chunk_number1;
@@ -214,10 +216,10 @@ int chunk_sort(void const* a, void const* b)
     char base_file_name1[256];
     char base_file_name2[256];
 
-    char buffer[256];
+    char fn_buffer[256];
 
-    snprintf(buffer, 256, "%s", str1);
-    get_chunk_info(buffer, base_file_name1, &put_time1, &chunk_number1, &chunk_count1, &server_number1);
+    snprintf(fn_buffer, 256, "%s", fn1);
+    get_chunk_info(fn_buffer, base_file_name1, &put_time1, &chunk_number1, &chunk_count1, &server_number1);
     /*
     printf(
         "%s %ld %ld %d %d %d\n",
@@ -230,8 +232,8 @@ int chunk_sort(void const* a, void const* b)
     );
     */
 
-    snprintf(buffer, 256, "%s", str2);
-    get_chunk_info(buffer, base_file_name2, &put_time2, &chunk_number2, &chunk_count2, &server_number2);
+    snprintf(fn_buffer, 256, "%s", fn2);
+    get_chunk_info(fn_buffer, base_file_name2, &put_time2, &chunk_number2, &chunk_count2, &server_number2);
     /*
     printf(
         "%s %ld %ld %d %d %d\n",
@@ -247,7 +249,14 @@ int chunk_sort(void const* a, void const* b)
     if (rv != 0) {
         return rv;
     }
-    return chunk_number1 > chunk_number2;
+
+    if (chunk_number1 != chunk_number2) {
+        return chunk_number1 > chunk_number2;
+    }
+    if (put_time1.tv_sec != put_time2.tv_sec) {
+        return put_time1.tv_sec > put_time2.tv_sec;
+    }
+    return put_time1.tv_nsec > put_time2.tv_nsec;
 };
 
 void dfc_ls(int scc, int* scv)
@@ -293,10 +302,56 @@ void dfc_ls(int scc, int* scv)
             free(response);
         }
     }
-    qsort(file_array, file_count, sizeof(file_array[0]), chunk_sort);
+
+    qsort(file_array, file_count, sizeof(file_array[0]), file_name_sort);
+
     for (size_t i = 0; i < file_count; i++) {
         printf("%s\n", file_array[i]);
-        free(file_array[i]);
+    }
+    if (file_count > 0) {
+        printf("\n");
+    }
+
+    for (size_t i = 0; i < file_count; i++) {
+        char current_base_file_name[256];
+
+        struct timespec put_time;
+        int chunk_number;
+        int chunk_count;
+        int server_number;
+        char base_file_name[256];
+        char fn_buffer[256];
+
+        snprintf(fn_buffer, 256, "%s", file_array[i]);
+        get_chunk_info(fn_buffer, base_file_name, &put_time, &chunk_number, &chunk_count, &server_number);
+        snprintf(current_base_file_name, 256, "%s", base_file_name);
+        printf("%s", current_base_file_name);
+        int current_chunk = 1;
+        while (i < file_count) {
+            snprintf(fn_buffer, 256, "%s", file_array[i]);
+            get_chunk_info(fn_buffer, base_file_name, &put_time, &chunk_number, &chunk_count, &server_number);
+            if (strcmp(base_file_name, current_base_file_name) != 0) {
+                if (chunk_number < chunk_count) {
+                    printf(" [incomplete]\n");
+                }
+                i--;
+                break;
+            }
+            if (chunk_number > current_chunk) {
+                printf(" [incomplete]\n");
+                current_chunk = chunk_count + 1;
+            } else if (chunk_number == current_chunk) {
+                if (chunk_number == chunk_count) {
+                    printf("\n");
+                }
+                current_chunk++;
+            }
+            free(file_array[i]);
+            i++;
+        }
+        if (current_chunk < chunk_count) {
+            printf(" [incomplete]\n");
+        }
     }
 }
 

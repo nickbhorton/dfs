@@ -152,7 +152,7 @@ static int tcp_generic(StringView node, int16_t port, bool bind_node)
     }
 
     if (ai_ptr == NULL) {
-        fprintf(stderr, "tcp_connect: %s\n", "failed to find server");
+        // fprintf(stderr, "tcp_connect: %s\n", "failed to find server");
         freeaddrinfo(ai_list);
         return -1;
     }
