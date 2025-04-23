@@ -25,12 +25,14 @@ ssize_t recv_request(int sock_fd, DfsRequest* request_o)
     total_bytes_recv += bytes_recv;
 
     // file_name
-    bytes_recv = tcp_recv(sock_fd, file_name_buffer, request_o->file_name.length);
-    if (bytes_recv != request_o->file_name.length) {
-        return -3;
+    if (request_o->file_name.length) {
+        bytes_recv = tcp_recv(sock_fd, file_name_buffer, request_o->file_name.length);
+        if (bytes_recv != request_o->file_name.length) {
+            return -3;
+        }
+        file_name_buffer[request_o->file_name.length] = '\0';
+        request_o->file_name.data = file_name_buffer;
     }
-    file_name_buffer[request_o->file_name.length] = '\0';
-    request_o->file_name.data = file_name_buffer;
 
     // printf("file_name recv: %s\n", request_o->file_name.data);
     return total_bytes_recv;
@@ -54,10 +56,12 @@ ssize_t send_request(int sock_fd, DfsRequest const* request)
     total_bytes_sent += bytes_sent;
 
     // file_name
-    bytes_sent = tcp_send(sock_fd, (char const*)request->file_name.data, request->file_name.length);
-    if (bytes_sent != request->file_name.length) {
-        return -3;
+    if (request->file_name.length) {
+        bytes_sent = tcp_send(sock_fd, (char const*)request->file_name.data, request->file_name.length);
+        if (bytes_sent != request->file_name.length) {
+            return -3;
+        }
+        total_bytes_sent += bytes_sent;
     }
-    total_bytes_sent += bytes_sent;
     return total_bytes_sent;
 }

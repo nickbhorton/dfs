@@ -42,7 +42,7 @@ ssize_t get_file_size(const char* file_name)
     static struct stat st;
     int rv = stat(file_name, &st);
     if (rv < 0) {
-        perror("stat");
+        // perror("stat");
         return -1;
     }
     return st.st_size;

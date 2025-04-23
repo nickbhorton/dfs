@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/sendfile.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <time.h>
@@ -18,6 +19,7 @@ int validate_input(int argc, char** argv);
 int read_conf(int** connections_o);
 
 void dfc_put(int scc, int* scv, int bfnc, char** bfnv);
+void dfc_ls(int scc, int* scv);
 
 int main(int argc, char** argv)
 {
@@ -29,8 +31,12 @@ int main(int argc, char** argv)
         exit(1);
     }
     switch (function) {
+    case REQUEST_LS:
+        dfc_ls(connection_count, connections);
+        break;
     case REQUEST_PUT:
         dfc_put(connection_count, connections, argc - 2, &argv[2]);
+        break;
     default:
         break;
     }
@@ -38,12 +44,12 @@ int main(int argc, char** argv)
     // shutdown all connections
     // shudown_connections:
     for (int i = 0; i < connection_count; i++) {
-        i < connection_count - 1 ? printf("%d/", connections[i]) : printf("%d", connections[i]);
+        // i < connection_count - 1 ? printf("%d/", connections[i]) : printf("%d", connections[i]);
         if (connections[i] > 0) {
             shutdown(connections[i], SHUT_RDWR);
         }
     }
-    printf("\n");
+    // printf("\n");
     free(connections);
 }
 
@@ -67,15 +73,111 @@ int bfn_to_fn(const char* bfn, char* fn_o, size_t fnsz, int chunk_num, int chunk
     return rv;
 }
 
+ssize_t send_chunk(int sock_fd, int file_fd, char const* bfn, ssize_t file_size, int chunk_number, int chunk_count)
+{
+    static char fn[256];
+    int rv = bfn_to_fn(bfn, fn, 256, chunk_number, chunk_count);
+    if (rv < 0) {
+        return -1;
+    }
+    size_t offset;
+    size_t chunk_size;
+    if (chunk_number < chunk_count) {
+        offset = (file_size / chunk_count) * (chunk_number - 1);
+        chunk_size = file_size / chunk_count;
+    } else {
+        offset = (file_size / chunk_count) * (chunk_number - 1);
+        chunk_size = file_size / chunk_count + file_size % chunk_count;
+    }
+    /*
+    printf(
+        "%s -> %s    fn_sz: %lu    cfile_sz: %zd    offset: %zd    chunk_size: %zd\n",
+        bfn,
+        fn,
+        strlen(fn),
+        file_size,
+        offset,
+        chunk_size
+    );
+    */
+
+    // send request
+    StringView fn_sv = {.data = fn, .length = rv};
+    DfsRequest request = {.function = REQUEST_PUT, .file_size = chunk_size, .file_name = fn_sv};
+    ssize_t request_bytes_sent = send_request(sock_fd, &request);
+    if (request_bytes_sent < 0) {
+        return -2;
+    }
+    ssize_t file_bytes_sent = sendfile(sock_fd, file_fd, (off_t*)&offset, chunk_size);
+    if (file_bytes_sent < chunk_size) {
+        return -2;
+    }
+    return request_bytes_sent + file_bytes_sent;
+}
+
 // bfn -> base file name
 // sc  -> socket connection
 void dfc_put(int scc, int* scv, int bfnc, char** bfnv)
 {
     for (int i = 0; i < bfnc; i++) {
-        char fn[256];
-        int rv = bfn_to_fn(bfnv[i], fn, 256, 1, 4);
-        if (rv > 0) {
-            printf("%s (%lu)\n", fn, strlen(fn));
+        ssize_t cfile_sz = get_file_size(bfnv[i]);
+        if (cfile_sz <= 0) {
+            continue;
+        }
+        FILE* cfile = fopen(bfnv[i], "r");
+        if (cfile == NULL) {
+            continue;
+        }
+
+        // determine x
+        uint8_t bfn_hash[16];
+        StringView bfn_sv = {.data = bfnv[i], .length = strlen(bfnv[i])};
+        hash_file_name(bfn_sv, bfn_hash);
+        int x = bfn_hash[15] % scc;
+
+        int rv;
+        for (int n = 0; n < scc; n++) {
+            int no = n + x;
+            int fst_chunk_idx = (no % scc) + 1;
+            int snd_chunk_idx = ((no + 1) % scc) + 1;
+            rv = send_chunk(scv[n], fileno(cfile), bfnv[i], cfile_sz, fst_chunk_idx, scc);
+            if (rv < 0) {
+                printf("%d/%d for server %d failed\n", fst_chunk_idx, scc, n + 1);
+            }
+            rv = send_chunk(scv[n], fileno(cfile), bfnv[i], cfile_sz, snd_chunk_idx, scc);
+            if (rv < 0) {
+                printf("%d/%d for server %d failed\n", snd_chunk_idx, scc, n + 1);
+            }
+        }
+        fclose(cfile);
+    }
+}
+
+void dfc_ls(int scc, int* scv)
+{
+    for (int n = 0; n < scc; n++) {
+        DfsRequest request = {.function = REQUEST_LS};
+        ssize_t request_bytes_sent = send_request(scv[n], &request);
+        if (request_bytes_sent < 0) {
+            printf("send_request failed for dfc_ls\n");
+            continue;
+        }
+        ssize_t response_size = -1;
+        int response_size_bytes = tcp_recv(scv[n], (char*)&response_size, sizeof(response_size));
+        if (response_size_bytes != sizeof(response_size)) {
+            printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
+            continue;
+        }
+        if (response_size > 0) {
+            char* response = malloc(response_size);
+            response_size_bytes = tcp_recv(scv[n], response, response_size);
+            if (response_size_bytes != response_size) {
+                printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
+                free(response);
+                continue;
+            }
+            printf("%.*s", (int)response_size_bytes, response);
+            free(response);
         }
     }
 }

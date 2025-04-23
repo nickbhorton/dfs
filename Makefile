@@ -39,5 +39,6 @@ clean:
 	rm -f dfs dfc testcli
 	rm -rf dfs1
 	rm -rf .dir1 .dir2 .dir3 .dir4
+	rm -rf dfs1 dfs2 dfs3 dfs4
 
 .PHONY: all clean
