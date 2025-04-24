@@ -74,8 +74,6 @@ int main(int argc, char** argv)
                 if (request.file_name.length > 0) {
                     filename_from_request(&request, dir, file_name, sizeof(file_name));
                     printf("%s\n", file_name);
-                } else {
-                    printf("no file_name\n");
                 }
 
                 switch (request.function) {
@@ -158,7 +156,6 @@ int main(int argc, char** argv)
                     break;
                 }
                 case REQUEST_LS: {
-                    printf("LS\n");
                     char ls_resp[LS_BUFFER_SIZE];
                     int bytes_written = snprintf(ls_resp, sizeof(ls_resp), "/bin/ls %s", dir);
                     FILE* fp = popen(ls_resp, "r");

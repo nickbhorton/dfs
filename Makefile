@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall -Werror -Iinclude -g3
 
-all: dfs dfc testcli dirs
+all: dfs dfc testcli
 
 dfs: dfs.o md5.o tcp.o filestuff.o protocol.o
 	$(CC) -o $@ $^ $(CFLAGS)
@@ -34,14 +34,9 @@ filestuff.o: src/filestuff.c include/filestuff.h
 protocol.o: src/protocol.c include/protocol.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-dirs:
-	mkdir -p dfs1 dfs2 dfs3 dfs4
-
 clean:
 	rm -f *.o
 	rm -f dfs dfc testcli
 	rm -rf dfs1
-	rm -rf .dir1 .dir2 .dir3 .dir4
-	rm -rf dfs1 dfs2 dfs3 dfs4
 
 .PHONY: all clean dirs

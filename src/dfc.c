@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,26 +17,27 @@
 int validate_input(int argc, char** argv);
 
 // returns number of heap sock_fd connections in connections_o
-int read_conf(int** connections_o);
+int read_conf(int** connections_o, int* server_up_count);
 
-void dfc_put(int scc, int* scv, int bfnc, char** bfnv);
-void dfc_ls(int scc, int* scv);
+void dfc_put(int scc, int* scv, int bfnc, char** bfnv, int server_up_count);
+void dfc_ls(int scc, int* scv, int server_up_count);
 
 int main(int argc, char** argv)
 {
     int function = validate_input(argc, argv);
     int* connections = NULL;
     int connection_count = 0;
-    if ((connection_count = read_conf(&connections)) <= 0) {
+    int server_up_count = 0;
+    if ((connection_count = read_conf(&connections, &server_up_count)) <= 0) {
         printf("read_conf\n");
         exit(1);
     }
     switch (function) {
     case REQUEST_LS:
-        dfc_ls(connection_count, connections);
+        dfc_ls(connection_count, connections, server_up_count);
         break;
     case REQUEST_PUT:
-        dfc_put(connection_count, connections, argc - 2, &argv[2]);
+        dfc_put(connection_count, connections, argc - 2, &argv[2], server_up_count);
         break;
     default:
         break;
@@ -53,11 +55,16 @@ int main(int argc, char** argv)
     free(connections);
 }
 
-int bfn_to_fn(const char* bfn, char* fn_o, size_t fnsz, int chunk_num, int chunk_count, int server_idx)
+int bfn_to_fn(
+    const char* bfn,
+    char* fn_o,
+    size_t fnsz,
+    int chunk_num,
+    int chunk_count,
+    int server_idx,
+    struct timespec const* put_time
+)
 {
-    struct timespec current_time;
-    clock_gettime(CLOCK_REALTIME, &current_time);
-
     char const* path_removed = strrchr(bfn, '/');
     char const* fn_no_path = path_removed ? path_removed + 1 : bfn;
     int rv = snprintf(
@@ -65,8 +72,8 @@ int bfn_to_fn(const char* bfn, char* fn_o, size_t fnsz, int chunk_num, int chunk
         fnsz,
         "%s.%ld.%09ld.%d.%d.%d",
         fn_no_path,
-        current_time.tv_sec,
-        current_time.tv_nsec,
+        put_time->tv_sec,
+        put_time->tv_nsec,
         chunk_num,
         chunk_count,
         server_idx
@@ -81,11 +88,12 @@ ssize_t send_chunk(
     ssize_t file_size,
     int chunk_number,
     int chunk_count,
-    int server_idx
+    int server_number,
+    struct timespec const* put_time
 )
 {
     static char fn[256];
-    int rv = bfn_to_fn(bfn, fn, 256, chunk_number, chunk_count, server_idx);
+    int rv = bfn_to_fn(bfn, fn, 256, chunk_number, chunk_count, server_number, put_time);
     if (rv < 0) {
         return -1;
     }
@@ -98,17 +106,6 @@ ssize_t send_chunk(
         offset = (file_size / chunk_count) * (chunk_number - 1);
         chunk_size = file_size / chunk_count + file_size % chunk_count;
     }
-    /*
-    printf(
-        "%s -> %s    fn_sz: %lu    cfile_sz: %zd    offset: %zd    chunk_size: %zd\n",
-        bfn,
-        fn,
-        strlen(fn),
-        file_size,
-        offset,
-        chunk_size
-    );
-    */
 
     // send request
     StringView fn_sv = {.data = fn, .length = rv};
@@ -126,9 +123,12 @@ ssize_t send_chunk(
 
 // bfn -> base file name
 // sc  -> socket connection
-void dfc_put(int scc, int* scv, int bfnc, char** bfnv)
+void dfc_put(int scc, int* scv, int bfnc, char** bfnv, int server_up_count)
 {
     for (int i = 0; i < bfnc; i++) {
+        struct timespec current_time;
+        clock_gettime(CLOCK_REALTIME, &current_time);
+
         ssize_t cfile_sz = get_file_size(bfnv[i]);
         if (cfile_sz <= 0) {
             continue;
@@ -142,124 +142,127 @@ void dfc_put(int scc, int* scv, int bfnc, char** bfnv)
         uint8_t bfn_hash[16];
         StringView bfn_sv = {.data = bfnv[i], .length = strlen(bfnv[i])};
         hash_file_name(bfn_sv, bfn_hash);
-        int x = bfn_hash[15] % scc;
-        printf("x = %d\n", x);
+        int x = bfn_hash[15] % server_up_count;
 
         int rv;
-        for (int n = 0; n < scc; n++) {
-            if (scv[n] < 0) {
-                continue;
+        int server_index = 0;
+        for (int n = 0; n < server_up_count; n++) {
+            while (scv[server_index] < 0 && server_index < scc) {
+                server_index++;
             }
             int no = n + x;
-            int fst_chunk_idx = (no % scc) + 1;
-            int snd_chunk_idx = ((no + 1) % scc) + 1;
-            rv = send_chunk(scv[n], fileno(cfile), bfnv[i], cfile_sz, fst_chunk_idx, scc, n);
+            int fst_chunk_idx = (no % server_up_count) + 1;
+            int snd_chunk_idx = ((no + 1) % server_up_count) + 1;
+            rv = send_chunk(
+                scv[server_index],
+                fileno(cfile),
+                bfnv[i],
+                cfile_sz,
+                fst_chunk_idx,
+                server_up_count,
+                server_index,
+                &current_time
+            );
             if (rv < 0) {
-                printf("%d/%d for server %d failed\n", fst_chunk_idx, scc, n + 1);
+                printf("%d/%d for server %d failed\n", fst_chunk_idx, server_up_count, n + 1);
             }
-            rv = send_chunk(scv[n], fileno(cfile), bfnv[i], cfile_sz, snd_chunk_idx, scc, n);
+            rv = send_chunk(
+                scv[server_index],
+                fileno(cfile),
+                bfnv[i],
+                cfile_sz,
+                snd_chunk_idx,
+                server_up_count,
+                server_index,
+                &current_time
+            );
             if (rv < 0) {
-                printf("%d/%d for server %d failed\n", snd_chunk_idx, scc, n + 1);
+                printf("%d/%d for server %d failed\n", snd_chunk_idx, server_up_count, n + 1);
             }
+            server_index++;
         }
         fclose(cfile);
     }
 }
 
-int get_chunk_info(
-    char* fn,
-    char* base_file_name_o,
-    struct timespec* put_time,
-    int* chunk_number,
-    int* chunk_count,
-    int* server_number
-)
+typedef struct {
+    char bfn[256];
+    struct timespec put_time;
+    int chunk_number;
+    int chunk_count;
+    int server_number;
+} ChunkInfo;
+
+int get_chunk_info(char const* fn, ChunkInfo* ci_o)
 {
+    char fn_buffer[256];
+    snprintf(fn_buffer, 256, "%s", fn);
+
     char* tokens[32];
     size_t token_idx = 0;
-    char* ptr = strtok(fn, ".");
+    char* ptr = strtok(fn_buffer, ".");
     while (ptr != NULL) {
         tokens[token_idx] = ptr;
         token_idx++;
         ptr = strtok(NULL, ".");
     }
-    put_time->tv_sec = atoi(tokens[token_idx - 5]);
-    put_time->tv_nsec = atoi(tokens[token_idx - 4]);
-    *chunk_number = atoi(tokens[token_idx - 3]);
-    *chunk_count = atoi(tokens[token_idx - 2]);
-    *server_number = atoi(tokens[token_idx - 1]);
+    ci_o->put_time.tv_sec = atoi(tokens[token_idx - 5]);
+    ci_o->put_time.tv_nsec = atoi(tokens[token_idx - 4]);
+    ci_o->chunk_number = atoi(tokens[token_idx - 3]);
+    ci_o->chunk_count = atoi(tokens[token_idx - 2]);
+    ci_o->server_number = atoi(tokens[token_idx - 1]);
 
     size_t base_file_name_idx = 0;
     for (int i = 0; i < (int)token_idx - 5; i++) {
-        memcpy(base_file_name_o + base_file_name_idx, tokens[i], strlen(tokens[i]));
+        memcpy(ci_o->bfn + base_file_name_idx, tokens[i], strlen(tokens[i]));
         base_file_name_idx += strlen(tokens[i]);
         if (i != (int)token_idx - 6) {
-            memcpy(base_file_name_o + base_file_name_idx, ".", 1);
+            memcpy(ci_o->bfn + base_file_name_idx, ".", 1);
             base_file_name_idx += 1;
         }
     }
-    base_file_name_o[base_file_name_idx] = '\0';
+    ci_o->bfn[base_file_name_idx] = '\0';
     return 0;
 }
+
+void print_chunk_info(ChunkInfo const* ci)
+{
+    char format_time_buff[64];
+    struct tm tm_time;
+    gmtime_r(&ci->put_time.tv_sec, &tm_time);
+    strftime(format_time_buff, 64, "%m/%d/%Y-%H:%M:%S.", &tm_time);
+    printf(
+        "%s %s%ld %d/%d %d\n",
+        ci->bfn,
+        format_time_buff,
+        ci->put_time.tv_nsec,
+        ci->chunk_number,
+        ci->chunk_count,
+        ci->server_number
+    );
+}
+
 int file_name_sort(void const* a, void const* b)
 {
-    char const* fn1 = *(char const**)a;
-    char const* fn2 = *(char const**)b;
-    struct timespec put_time1;
-    struct timespec put_time2;
-    int chunk_number1;
-    int chunk_number2;
-    int chunk_count1;
-    int chunk_count2;
-    int server_number1;
-    int server_number2;
-    char base_file_name1[256];
-    char base_file_name2[256];
+    ChunkInfo ci1;
+    ChunkInfo ci2;
+    get_chunk_info(*(char const**)a, &ci1);
+    get_chunk_info(*(char const**)b, &ci2);
 
-    char fn_buffer[256];
-
-    snprintf(fn_buffer, 256, "%s", fn1);
-    get_chunk_info(fn_buffer, base_file_name1, &put_time1, &chunk_number1, &chunk_count1, &server_number1);
-    /*
-    printf(
-        "%s %ld %ld %d %d %d\n",
-        base_file_name1,
-        put_time1.tv_sec,
-        put_time1.tv_nsec,
-        chunk_number1,
-        chunk_count1,
-        server_number1
-    );
-    */
-
-    snprintf(fn_buffer, 256, "%s", fn2);
-    get_chunk_info(fn_buffer, base_file_name2, &put_time2, &chunk_number2, &chunk_count2, &server_number2);
-    /*
-    printf(
-        "%s %ld %ld %d %d %d\n",
-        base_file_name2,
-        put_time2.tv_sec,
-        put_time2.tv_nsec,
-        chunk_number2,
-        chunk_count2,
-        server_number2
-    );
-    */
-    int rv = strcmp(base_file_name1, base_file_name2);
-    if (rv != 0) {
+    int rv;
+    if ((rv = strcmp(ci1.bfn, ci2.bfn)) != 0) {
         return rv;
     }
-
-    if (chunk_number1 != chunk_number2) {
-        return chunk_number1 > chunk_number2;
+    if (ci1.put_time.tv_sec != ci2.put_time.tv_sec) {
+        return ci1.put_time.tv_sec < ci2.put_time.tv_sec;
     }
-    if (put_time1.tv_sec != put_time2.tv_sec) {
-        return put_time1.tv_sec > put_time2.tv_sec;
+    if (ci1.put_time.tv_nsec != ci2.put_time.tv_nsec) {
+        return ci1.put_time.tv_nsec < ci2.put_time.tv_nsec;
     }
-    return put_time1.tv_nsec > put_time2.tv_nsec;
+    return ci1.chunk_number > ci2.chunk_number;
 };
 
-void dfc_ls(int scc, int* scv)
+void dfc_ls(int scc, int* scv, int server_up_count)
 {
     char* file_array[1024];
     size_t file_count = 0;
@@ -302,60 +305,52 @@ void dfc_ls(int scc, int* scv)
             free(response);
         }
     }
+    if (file_count == 0) {
+        return;
+    }
 
     qsort(file_array, file_count, sizeof(file_array[0]), file_name_sort);
 
-    for (size_t i = 0; i < file_count; i++) {
-        printf("%s\n", file_array[i]);
-    }
-    if (file_count > 0) {
-        printf("\n");
-    }
-
-    for (size_t i = 0; i < file_count; i++) {
-        char current_base_file_name[256];
-
-        struct timespec put_time;
-        int chunk_number;
-        int chunk_count;
-        int server_number;
-        char base_file_name[256];
-        char fn_buffer[256];
-
-        snprintf(fn_buffer, 256, "%s", file_array[i]);
-        get_chunk_info(fn_buffer, base_file_name, &put_time, &chunk_number, &chunk_count, &server_number);
-        snprintf(current_base_file_name, 256, "%s", base_file_name);
-        printf("%s", current_base_file_name);
-        int current_chunk = 1;
-        while (i < file_count) {
-            snprintf(fn_buffer, 256, "%s", file_array[i]);
-            get_chunk_info(fn_buffer, base_file_name, &put_time, &chunk_number, &chunk_count, &server_number);
-            if (strcmp(base_file_name, current_base_file_name) != 0) {
-                if (chunk_number < chunk_count) {
-                    printf(" [incomplete]\n");
-                }
-                i--;
-                break;
-            }
-            if (chunk_number > current_chunk) {
-                printf(" [incomplete]\n");
-                current_chunk = chunk_count + 1;
-            } else if (chunk_number == current_chunk) {
-                if (chunk_number == chunk_count) {
-                    printf("\n");
-                }
-                current_chunk++;
-            }
-            free(file_array[i]);
-            i++;
+    struct timespec check_time = {};
+    int next_chunk = 0;
+    int end_chunk = 0;
+    bool whole_file = false;
+    bool old = false;
+    char working_base_file_name[256] = {};
+    for (size_t i = 0; i < file_count + 1; i++) {
+        ChunkInfo ci;
+        if (i < file_count) {
+            get_chunk_info(file_array[i], &ci);
         }
-        if (current_chunk < chunk_count) {
-            printf(" [incomplete]\n");
+        if (check_time.tv_sec != ci.put_time.tv_sec || check_time.tv_nsec != ci.put_time.tv_nsec || i == file_count) {
+            if (!old && (check_time.tv_sec != 0 || i == file_count)) {
+                whole_file ? printf("%s\n", working_base_file_name)
+                           : printf("%s [incomplete]\n", working_base_file_name);
+            }
+            if (strncmp(working_base_file_name, ci.bfn, 256) == 0) {
+                old = true;
+            } else {
+                old = false;
+            }
+            snprintf(working_base_file_name, 256, "%s", ci.bfn);
+            check_time = ci.put_time;
+            next_chunk = 1;
+            end_chunk = ci.chunk_count;
+            whole_file = false;
+        }
+        if (i < file_count) {
+            if (ci.chunk_number == end_chunk && next_chunk == end_chunk) {
+                whole_file = true;
+            } else if (ci.chunk_number == next_chunk) {
+                next_chunk++;
+            }
+            // print_chunk_info(&ci);
+            free(file_array[i]);
         }
     }
 }
 
-int read_conf(int** connections_o)
+int read_conf(int** connections_o, int* server_up_count)
 {
     FILE* conf_file = fopen("dfc.conf", "r");
     if (conf_file == NULL) {
@@ -415,6 +410,9 @@ int read_conf(int** connections_o)
         // connect to the server
         StringView node = {.data = address_ip, .length = strlen(address_ip)};
         result[i] = tcp_connect(node, address_port);
+        if (result[i] > 0) {
+            *server_up_count += 1;
+        }
         i++;
     }
 
