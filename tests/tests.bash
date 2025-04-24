@@ -154,12 +154,13 @@ rm dfs2/*
 rm dfs3/*
 rm dfs4/*
 
-./dfc put tests/test_file1x.txt
+./dfc put tests/test_file1x.txt tests/test_file1x.txt
 
-./dfc get tests/test_file1x.txt > .temp1
+./dfc get test_file1x.txt > .temp1
 cat tests/test_file1x.txt > .temp2
 if ! cmp -s .temp1 .temp2; then
     echo "failed basic get"
+    cat .temp1
 fi
 rm .temp1 .temp2
 

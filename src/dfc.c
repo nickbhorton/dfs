@@ -20,6 +20,7 @@ int validate_input(int argc, char** argv);
 int read_conf(int** connections_o, int* server_up_count);
 
 void dfc_put(int scc, int* scv, int bfnc, char** bfnv, int server_up_count);
+void dfc_get(int scc, int* scv, int bfnc, char** bfnv, int server_up_count);
 void dfc_ls(int scc, int* scv, int server_up_count);
 
 int main(int argc, char** argv)
@@ -38,6 +39,9 @@ int main(int argc, char** argv)
         break;
     case REQUEST_PUT:
         dfc_put(connection_count, connections, argc - 2, &argv[2], server_up_count);
+        break;
+    case REQUEST_GET:
+        dfc_get(connection_count, connections, argc - 2, &argv[2], server_up_count);
         break;
     default:
         break;
@@ -257,7 +261,7 @@ int file_name_sort(void const* a, void const* b)
         return ci1.put_time.tv_sec < ci2.put_time.tv_sec;
     }
     if (ci1.put_time.tv_nsec != ci2.put_time.tv_nsec) {
-        return ci1.put_time.tv_nsec < ci2.put_time.tv_nsec;
+        return ci1.put_time.tv_nsec > ci2.put_time.tv_nsec;
     }
     return ci1.chunk_number > ci2.chunk_number;
 };
@@ -347,6 +351,68 @@ void dfc_ls(int scc, int* scv, int server_up_count)
             // print_chunk_info(&ci);
             free(file_array[i]);
         }
+    }
+}
+
+void dfc_get(int scc, int* scv, int bfnc, char** bfnv, int server_up_count)
+{
+    char* fn_to_get = bfnv[0];
+
+    char* file_array[1024];
+    size_t file_count = 0;
+    for (int n = 0; n < scc; n++) {
+        if (scv[n] < 0) {
+            continue;
+        }
+
+        DfsRequest request = {.function = REQUEST_LS};
+        ssize_t request_bytes_sent = send_request(scv[n], &request);
+        if (request_bytes_sent < 0) {
+            printf("send_request failed for dfc_ls\n");
+            continue;
+        }
+        ssize_t response_size = -1;
+        int response_size_bytes = tcp_recv(scv[n], (char*)&response_size, sizeof(response_size));
+        if (response_size_bytes != sizeof(response_size)) {
+            printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
+            continue;
+        }
+        if (response_size > 0) {
+            char* response = malloc(response_size + 1);
+            response[response_size] = '\0';
+            response_size_bytes = tcp_recv(scv[n], response, response_size);
+            if (response_size_bytes != response_size) {
+                printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
+                free(response);
+                continue;
+            }
+
+            // tokenize response on \n
+            char* file_ptr = strtok(response, "\n");
+            while (file_ptr != NULL) {
+                file_array[file_count] = malloc(strlen(file_ptr) + 1);
+                memcpy(file_array[file_count], file_ptr, strlen(file_ptr));
+                file_array[file_count][strlen(file_ptr)] = '\0';
+                file_count++;
+                file_ptr = strtok(NULL, "\n");
+            }
+            free(response);
+        }
+    }
+
+    qsort(file_array, file_count, sizeof(file_array[0]), file_name_sort);
+    struct timespec newest = {};
+    for (size_t i = 0; i < file_count; i++) {
+        ChunkInfo ci;
+        get_chunk_info(file_array[i], &ci);
+        if (newest.tv_sec == 0) {
+            newest = ci.put_time;
+        }
+        if (strcmp(fn_to_get, ci.bfn) == 0 && ci.put_time.tv_sec == newest.tv_sec &&
+            ci.put_time.tv_nsec == newest.tv_nsec) {
+            print_chunk_info(&ci);
+        }
+        free(file_array[i]);
     }
 }
 
