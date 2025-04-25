@@ -494,9 +494,22 @@ void dfc_get(int scc, int* scv, int bfnc, char** bfnv, int server_up_count)
 
 int read_conf(int** connections_o, int* server_up_count)
 {
-    FILE* conf_file = fopen("dfc.conf", "r");
+    // trying to read from user home dir
+    char* conf_fn_full = NULL;
+    char* conf_fn = "/dfc.conf";
+    conf_fn_full = malloc(strlen(getenv("HOME") + strlen(conf_fn) + 1));
+    strcpy(conf_fn_full, getenv("HOME"));
+    strcat(conf_fn_full, conf_fn);
+    FILE* conf_file = fopen(conf_fn_full, "r");
+    free(conf_fn_full);
+
     if (conf_file == NULL) {
-        return -1;
+        printf("no ~/dfc.conf trying ./dfc.conf\n");
+        // if no conf at home dir try working dir
+        conf_file = fopen("dfc.conf", "r");
+        if (conf_file == NULL) {
+            return -1;
+        }
     }
 
     char line[512];
