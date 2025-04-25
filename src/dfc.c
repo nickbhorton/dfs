@@ -410,83 +410,86 @@ ssize_t get_chunk(int sock_fd, char* fn_on_server, char* fn_to_save)
 
 void dfc_get(int scc, int* scv, int bfnc, char** bfnv, int server_up_count)
 {
-    char* fn_to_get = bfnv[0];
+    for (int fi = 0; fi < bfnc; fi++) {
+        char* fn_to_get = bfnv[fi];
 
-    char* file_array[1024];
-    size_t file_count = 0;
-    for (int n = 0; n < scc; n++) {
-        if (scv[n] < 0) {
-            continue;
-        }
-
-        DfsRequest request = {.function = REQUEST_LS};
-        ssize_t request_bytes_sent = send_request(scv[n], &request);
-        if (request_bytes_sent < 0) {
-            printf("send_request failed for dfc_ls\n");
-            continue;
-        }
-        ssize_t response_size = -1;
-        int response_size_bytes = tcp_recv(scv[n], (char*)&response_size, sizeof(response_size));
-        if (response_size_bytes != sizeof(response_size)) {
-            printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
-            continue;
-        }
-        if (response_size > 0) {
-            char* response = malloc(response_size + 1);
-            response[response_size] = '\0';
-            response_size_bytes = tcp_recv(scv[n], response, response_size);
-            if (response_size_bytes != response_size) {
-                printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
-                free(response);
+        char* file_array[1024];
+        size_t file_count = 0;
+        for (int n = 0; n < scc; n++) {
+            if (scv[n] < 0) {
                 continue;
             }
 
-            // tokenize response on \n
-            char* file_ptr = strtok(response, "\n");
-            while (file_ptr != NULL) {
-                file_array[file_count] = malloc(strlen(file_ptr) + 1);
-                memcpy(file_array[file_count], file_ptr, strlen(file_ptr));
-                file_array[file_count][strlen(file_ptr)] = '\0';
-                file_count++;
-                file_ptr = strtok(NULL, "\n");
+            DfsRequest request = {.function = REQUEST_LS};
+            ssize_t request_bytes_sent = send_request(scv[n], &request);
+            if (request_bytes_sent < 0) {
+                printf("send_request failed for dfc_ls\n");
+                continue;
             }
-            free(response);
-        }
-    }
+            ssize_t response_size = -1;
+            int response_size_bytes = tcp_recv(scv[n], (char*)&response_size, sizeof(response_size));
+            if (response_size_bytes != sizeof(response_size)) {
+                printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
+                continue;
+            }
+            if (response_size > 0) {
+                char* response = malloc(response_size + 1);
+                response[response_size] = '\0';
+                response_size_bytes = tcp_recv(scv[n], response, response_size);
+                if (response_size_bytes != response_size) {
+                    printf("tcp_recv failed for dfc_ls %d\n", response_size_bytes);
+                    free(response);
+                    continue;
+                }
 
-    qsort(file_array, file_count, sizeof(file_array[0]), file_name_sort);
-    struct timespec newest = {};
-    int next_chunk_number = 1;
-    int goal_chunk_count = -1;
-    for (size_t i = 0; i < file_count; i++) {
-        ChunkInfo ci;
-        get_chunk_info(file_array[i], &ci);
-        if (newest.tv_sec == 0 && strcmp(fn_to_get, ci.bfn) == 0) {
-            newest = ci.put_time;
-            goal_chunk_count = ci.chunk_count;
-        }
-        if (strcmp(fn_to_get, ci.bfn) == 0 && ci.put_time.tv_sec == newest.tv_sec &&
-            ci.put_time.tv_nsec == newest.tv_nsec && ci.chunk_number == next_chunk_number) {
-            // print_chunk_info(&ci);
-            char fn_to_save[256];
-            snprintf(fn_to_save, 256, ".%d.dfstempfile51385711230", next_chunk_number);
-            ssize_t rv = get_chunk(scv[ci.server_number], file_array[i], fn_to_save);
-            if (rv > 0) {
-                next_chunk_number++;
+                // tokenize response on \n
+                char* file_ptr = strtok(response, "\n");
+                while (file_ptr != NULL) {
+                    file_array[file_count] = malloc(strlen(file_ptr) + 1);
+                    memcpy(file_array[file_count], file_ptr, strlen(file_ptr));
+                    file_array[file_count][strlen(file_ptr)] = '\0';
+                    file_count++;
+                    file_ptr = strtok(NULL, "\n");
+                }
+                free(response);
             }
         }
-        free(file_array[i]);
-    }
 
-    if (goal_chunk_count + 1 == next_chunk_number) {
-        char cmd[512];
-        snprintf(cmd, 512, "cat .*.dfstempfile51385711230 > %s", fn_to_get);
-        system(cmd);
-    } else {
-        printf("FAIL\n");
+        qsort(file_array, file_count, sizeof(file_array[0]), file_name_sort);
+        struct timespec newest = {};
+        int next_chunk_number = 1;
+        int goal_chunk_count = -1;
+        for (size_t i = 0; i < file_count; i++) {
+            ChunkInfo ci;
+            get_chunk_info(file_array[i], &ci);
+            if (newest.tv_sec == 0 && strcmp(fn_to_get, ci.bfn) == 0) {
+                newest = ci.put_time;
+                goal_chunk_count = ci.chunk_count;
+            }
+            if (strcmp(fn_to_get, ci.bfn) == 0 && ci.put_time.tv_sec == newest.tv_sec &&
+                ci.put_time.tv_nsec == newest.tv_nsec && ci.chunk_number == next_chunk_number) {
+                // print_chunk_info(&ci);
+                char fn_to_save[256];
+                snprintf(fn_to_save, 256, ".%d.dfstempfile51385711230", next_chunk_number);
+                ssize_t rv = get_chunk(scv[ci.server_number], file_array[i], fn_to_save);
+                if (rv > 0) {
+                    next_chunk_number++;
+                }
+            }
+            free(file_array[i]);
+        }
+
+        if (goal_chunk_count + 1 == next_chunk_number) {
+            char cmd[512];
+            // cat
+            snprintf(cmd, 512, "cat .*.dfstempfile51385711230 > %s", fn_to_get);
+            system(cmd);
+        } else {
+            printf("%s is incomplete\n", fn_to_get);
+        }
+        // remove all the temp files
+        system("rm .*.dfstempfile51385711230");
     }
-    // remove all the temp files
-    system("rm .*.dfstempfile51385711230");
 }
 
 int read_conf(int** connections_o, int* server_up_count)

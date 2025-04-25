@@ -172,6 +172,50 @@ if ! cmp -s .temp1 .temp2; then
 fi
 rm .temp1 .temp2
 
+# after killing 1 server
+rm dfs1/*
+./dfc get test_file1x.txt
+mv test_file1x.txt .temp1
+cat tests/test_file1x.txt > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "failed basic get"
+fi
+rm .temp1 .temp2
+
+./dfc get test_file2xxxx.jpg
+mv test_file2xxxx.jpg .temp1
+cat tests/test_file2xxxx.jpg > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "failed basic get snd file"
+fi
+rm .temp1 .temp2
+
+# after killing 2 server they should say incomplete
+rm dfs2/*
+rm1=$(./dfc get test_file1x.txt)
+if [ ! "$rm1" = "test_file1x.txt is incomplete" ]; then
+    echo "failed basic get with 2 broken server"
+fi
+rm1=$(./dfc get test_file2xxxx.jpg)
+if [ ! "$rm1" = "test_file2xxxx.jpg is incomplete" ]; then
+    echo "failed basic get with 2 broken server"
+fi
+
+./dfc put tests/test_file1x.txt tests/test_file2xxxx.jpg
+./dfc get test_file1x.txt test_file2xxxx.jpg
+mv test_file1x.txt .temp1
+cat tests/test_file1x.txt > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "failed basic get snd file"
+fi
+rm .temp1 .temp2
+mv test_file2xxxx.jpg .temp1
+cat tests/test_file2xxxx.jpg > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "failed basic get snd file"
+fi
+rm .temp1 .temp2
+
 kill $dfs1_pid
 kill $dfs2_pid
 kill $dfs3_pid
