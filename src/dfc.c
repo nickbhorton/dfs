@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -354,6 +355,59 @@ void dfc_ls(int scc, int* scv, int server_up_count)
     }
 }
 
+ssize_t get_chunk(int sock_fd, char* fn_on_server, char* fn_to_save)
+{
+    FILE* fptr = fopen(fn_to_save, "w");
+    if (fptr == NULL) {
+        return -1;
+    }
+    StringView fn_on_server_sv = {.data = fn_on_server, .length = strlen(fn_on_server)};
+    DfsRequest request = {.file_name = fn_on_server_sv, .file_size = 0, .function = REQUEST_GET};
+    ssize_t rv = send_request(sock_fd, &request);
+    if (rv < 0) {
+        fclose(fptr);
+        remove(fn_to_save);
+        return rv;
+    }
+    ssize_t file_size = -1;
+    int file_size_bytes = tcp_recv(sock_fd, (char*)&file_size, sizeof(file_size));
+    if (file_size_bytes != sizeof(file_size)) {
+        fclose(fptr);
+        remove(fn_to_save);
+        return -1;
+    }
+    if (!file_size) {
+        fclose(fptr);
+        remove(fn_to_save);
+        return -1;
+    }
+    char file_buffer[16384];
+    ssize_t total_file_bytes_recv = 0;
+    size_t total_file_bytes_written = 0;
+    while (total_file_bytes_recv < file_size) {
+        ssize_t file_bytes_recv = tcp_recv(
+            sock_fd,
+            file_buffer,
+            file_size - total_file_bytes_recv < 16384 ? file_size - total_file_bytes_recv : 16384
+        );
+        if (file_bytes_recv <= 0) {
+            fclose(fptr);
+            remove(fn_to_save);
+            return -1;
+        }
+        total_file_bytes_recv += file_bytes_recv;
+        size_t file_bytes_written = fwrite(file_buffer, sizeof(char), file_bytes_recv, fptr);
+        if (file_bytes_written < file_bytes_recv) {
+            fclose(fptr);
+            remove(fn_to_save);
+            return -1;
+        }
+        total_file_bytes_written += file_bytes_written;
+    }
+    fclose(fptr);
+    return (ssize_t)total_file_bytes_written;
+}
+
 void dfc_get(int scc, int* scv, int bfnc, char** bfnv, int server_up_count)
 {
     char* fn_to_get = bfnv[0];
@@ -402,18 +456,37 @@ void dfc_get(int scc, int* scv, int bfnc, char** bfnv, int server_up_count)
 
     qsort(file_array, file_count, sizeof(file_array[0]), file_name_sort);
     struct timespec newest = {};
+    int next_chunk_number = 1;
+    int goal_chunk_count = -1;
     for (size_t i = 0; i < file_count; i++) {
         ChunkInfo ci;
         get_chunk_info(file_array[i], &ci);
-        if (newest.tv_sec == 0) {
+        if (newest.tv_sec == 0 && strcmp(fn_to_get, ci.bfn) == 0) {
             newest = ci.put_time;
+            goal_chunk_count = ci.chunk_count;
         }
         if (strcmp(fn_to_get, ci.bfn) == 0 && ci.put_time.tv_sec == newest.tv_sec &&
-            ci.put_time.tv_nsec == newest.tv_nsec) {
-            print_chunk_info(&ci);
+            ci.put_time.tv_nsec == newest.tv_nsec && ci.chunk_number == next_chunk_number) {
+            // print_chunk_info(&ci);
+            char fn_to_save[256];
+            snprintf(fn_to_save, 256, ".%d.dfstempfile51385711230", next_chunk_number);
+            ssize_t rv = get_chunk(scv[ci.server_number], file_array[i], fn_to_save);
+            if (rv > 0) {
+                next_chunk_number++;
+            }
         }
         free(file_array[i]);
     }
+
+    if (goal_chunk_count + 1 == next_chunk_number) {
+        char cmd[512];
+        snprintf(cmd, 512, "cat .*.dfstempfile51385711230 > %s", fn_to_get);
+        system(cmd);
+    } else {
+        printf("FAIL\n");
+    }
+    // remove all the temp files
+    system("rm .*.dfstempfile51385711230");
 }
 
 int read_conf(int** connections_o, int* server_up_count)

@@ -154,16 +154,23 @@ rm dfs2/*
 rm dfs3/*
 rm dfs4/*
 
-./dfc put tests/test_file1x.txt tests/test_file1x.txt
+./dfc put tests/test_file1x.txt tests/test_file1x.txt tests/test_file2xxxx.jpg
 
-./dfc get test_file1x.txt > .temp1
+./dfc get test_file1x.txt
+mv test_file1x.txt .temp1
 cat tests/test_file1x.txt > .temp2
 if ! cmp -s .temp1 .temp2; then
     echo "failed basic get"
-    cat .temp1
 fi
 rm .temp1 .temp2
 
+./dfc get test_file2xxxx.jpg
+mv test_file2xxxx.jpg .temp1
+cat tests/test_file2xxxx.jpg > .temp2
+if ! cmp -s .temp1 .temp2; then
+    echo "failed basic get snd file"
+fi
+rm .temp1 .temp2
 
 kill $dfs1_pid
 kill $dfs2_pid
